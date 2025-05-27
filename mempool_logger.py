@@ -1,31 +1,29 @@
 import requests
 import csv
-from datetime import datetime
+import datetime
 
-# === Get mempool data from mempool.space ===
-try:
-    response = requests.get("https://mempool.space/api/mempool")
-    response.raise_for_status()
-    data = response.json()
-except Exception as e:
-    print(f"[ERROR] Failed to fetch mempool data: {e}")
-    exit()
+def log_mempool_stats():
+    try:
+        response = requests.get("https://mempool.space/api/mempool", timeout=10)
+        data = response.json()
 
-# === Extract key metrics ===
-timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
-tx_count = data.get("count", 0)
-total_vbytes = data.get("vsize", 0)
+        tx_count = data.get("count")
+        mempool_size = data.get("vsize")
 
-# === Save to CSV ===
-csv_file = "logs/mempool_log.csv"
+        if tx_count is None or mempool_size is None:
+            print("[SKIPPED] Incomplete data, not logging.")
+            return
 
-try:
-    with open(csv_file, mode='a', newline='') as file:
-        writer = csv.writer(file)
-        # Write header if file is empty
-        if file.tell() == 0:
-            writer.writerow(["timestamp", "tx_count", "total_vbytes"])
-        writer.writerow([timestamp, tx_count, total_vbytes])
-    print(f"[{timestamp}] TXs: {tx_count} | Size: {total_vbytes} vBytes")
-except Exception as e:
-    print(f"[ERROR] Failed to write to CSV: {e}")
+        timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+        with open("mempool_log.csv", "a", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow([timestamp, tx_count, mempool_size])
+
+        print(f"[{timestamp}] TXs: {tx_count} | Size: {mempool_size} vBytes")
+
+    except Exception as e:
+        print(f"[ERROR] mempool fetch failed: {e}")
+
+if __name__ == "__main__":
+    log_mempool_stats()
