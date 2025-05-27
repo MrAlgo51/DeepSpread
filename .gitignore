@@ -1,0 +1,13 @@
+ # Ignore log files and CSV outputs
+logs/
+*.csv
+*.log
+
+# Python junk
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# VS Code config files
+.vscode/
