@@ -1,0 +1,28 @@
+{
+  "sort_by": "win_rate",
+
+  "rules": [
+    {
+      "name": "score > x",
+      "logic": "score > {x}",
+      "sweep": {
+        "x": [0.1, 0.2, 0.3, 0.4, 0.5]
+      }
+    },
+    {
+      "name": "score > x AND median_fee > y",
+      "logic": "score > {x} and median_fee > {y}",
+      "sweep": {
+        "x": [0.1, 0.2, 0.3, 0.4, 0.5],
+        "y": [2, 3, 4, 5, 6]
+      }
+    },
+    {
+      "name": "spread_pct < z",
+      "logic": "spread_pct < {z}",
+      "sweep": {
+        "z": [0.5, 0.6, 0.7, 0.8, 0.9]
+      }
+    }
+  ]
+}
