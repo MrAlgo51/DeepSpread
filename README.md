@@ -11,20 +11,23 @@ This project is not a bot. It does not auto-trade. It’s a research and signal 
 
 ## Project Structure
 
+```
 DeepSpread/
 ├── modules/
-│ ├── config.py # DB paths, constants
-│ ├── error_logger.py # Logs to error file
-│ ├── fetch_*.py # Individual data fetchers (Kraken, TradeOgre)
-│ ├── sqlite_logger.py # Writes final score record
+│   ├── config.py              # DB paths, constants
+│   ├── error_logger.py        # Logs to error file
+│   ├── fetch_*.py             # Individual data fetchers (Kraken, TradeOgre)
+│   ├── sqlite_logger.py       # Writes final score record
 ├── src/
-│ ├── merged_logger.py # Merges all inputs into a single score
-│ ├── view_debug_signals.py # Shows last logged scores
-│ └── view_all_latest.py # Shows latest from all raw tables
-├── logs/ # Optional error/debug logs
-├── data/ # Database lives here
-├── tests/ # Unit tests (TBD)
+│   ├── merged_logger.py       # Merges all inputs into a single score
+│   ├── view_debug_signals.py  # Shows last logged scores
+│   └── view_all_latest.py     # Shows latest from all raw tables
+├── logs/                      # Optional error/debug logs
+├── data/                      # Database lives here
+├── tests/                     # Unit tests (TBD)
 └── README.md
+```
+
 
 ## How It Works
 
