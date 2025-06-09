@@ -1,119 +1,109 @@
-# src/score_logger.py
+# score_logger.py
 
 import os
 import sys
 import sqlite3
 from datetime import datetime, timezone
+from modules.config import DB_PATH
 
-# --- Setup: Add /modules to sys.path ---
-current_dir = os.path.dirname(os.path.abspath(__file__))                    # /DeepSpread/src
-project_root = os.path.abspath(os.path.join(current_dir, ".."))            # /DeepSpread
-modules_path = os.path.join(project_root, "modules")                       # /DeepSpread/modules
+# Setup module path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, ".."))
+modules_path = os.path.join(project_root, "modules")
 if modules_path not in sys.path:
     sys.path.insert(0, modules_path)
 
-# ✅ Now safe to import from modules/
-from config import DB_PATH
-from error_logger import log_to_file
-from sqlite_logger import log_signal
-from fetch_latest import fetch_latest_usdt_premium
+from fetch_kraken_btcusd import get_kraken_btcusd  # ✅ Correct fetcher
 from scoring import compute_score
+from error_logger import log_to_file
 
-# --- Function: Get latest rows from mempool_logs and signals ---
 def get_latest_rows(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Fetch latest mempool data from mempool_logs
     cursor.execute("""
-        SELECT timestamp, unconfirmed_tx, mempool_size, median_fee, low_bucket, med_bucket, high_bucket
+        SELECT timestamp, unconfirmed_tx, mempool_size, median_fee
         FROM mempool_logs
-        ORDER BY timestamp DESC LIMIT 1
+        ORDER BY timestamp DESC
+        LIMIT 1
     """)
     mempool_row = cursor.fetchone()
 
-    # Get latest spread entry from signals
     cursor.execute("""
-        SELECT * FROM signals
-        WHERE spread_pct != 0 AND median_fee = 0
+        SELECT timestamp, kraken_price, spread_pct
+        FROM spread
         ORDER BY timestamp DESC
         LIMIT 1
     """)
     spread_row = cursor.fetchone()
 
+    cursor.execute("""
+    SELECT timestamp, kraken_usd, binance_usdt, premium_pct, z_score
+    FROM usdt_premium
+    ORDER BY timestamp DESC
+    LIMIT 1
+""")
+
+    usdt_row = cursor.fetchone()
+
     conn.close()
-    return mempool_row, spread_row
+    return mempool_row, spread_row, usdt_row
 
-# --- Main Script ---
-db_path = DB_PATH
-mempool_row, spread_row = get_latest_rows(db_path)
+def main():
+    mempool_row, spread_row, usdt_row = get_latest_rows(DB_PATH)
 
-# Fetch USDT premium
-usdt_row = fetch_latest_usdt_premium()
-if usdt_row is None:
-    print("[score_logger] Missing USDT premium data, cannot score.")
-    log_to_file("score_logger", "Missing USDT premium data, cannot score.")
-    sys.exit()
+    print(f"[DEBUG] Mempool row: {mempool_row}")
+    print(f"[DEBUG] Spread row: {spread_row}")
+    print(f"[DEBUG] USDT Premium: {usdt_row}")
 
-usdt_timestamp, btc_usd, btc_usdt, premium_pct, z_score_usdt = usdt_row
+    if not all([mempool_row, spread_row, usdt_row]):
+        print("[score_logger] Missing data, cannot score.")
+        return
 
-# Debug prints
-print("[DEBUG] Mempool row:", mempool_row)
-print("[DEBUG] Spread row:", spread_row)
-print("[DEBUG] USDT Premium:", usdt_row)
+    # Time validation (omitted here, keep if needed)
 
-if not mempool_row or not spread_row:
-    print("[SKIP] Missing data, cannot score.")
-    log_to_file("score_logger", "Missing data, cannot score.")
-    sys.exit()
+    try:
+        fee = mempool_row[3]
+        unconfirmed_tx = mempool_row[1]
+        spread_pct = spread_row[2]
+        z_score = usdt_row[4]
 
-try:
-    # Parse timestamps
-    mem_ts = datetime.strptime(mempool_row[0], '%Y-%m-%d %H:%M:%S UTC')
-    spd_ts = datetime.strptime(spread_row[0], '%Y-%m-%d %H:%M:%S UTC')
-    time_diff = abs((mem_ts - spd_ts).total_seconds())
+        btc_price = get_kraken_btcusd()  # ✅ This is now the actual BTC/USD price
 
-    if time_diff > 60:
-        print(f"[SKIP] Timestamps too far apart ({time_diff:.1f} sec)")
-        log_to_file("score_logger", f"Timestamps too far apart ({time_diff:.1f} sec)")
-        sys.exit()
+        score = compute_score(fee, unconfirmed_tx, spread_pct, z_score)
 
-    # Parse values
-    mem_tx_count = int(mempool_row[1])
-    median_fee = float(mempool_row[3])
-    spread_val = round(float(spread_row[2]), 2)
-    btc_price = round(float(spread_row[1]), 2)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Compute score
-    score = compute_score(
-        median_fee=median_fee,
-        unconfirmed_tx=mem_tx_count,
-        spread_pct=spread_val,
-        usdt_premium_z=z_score_usdt
-    )
+        print(f"[DEBUG] Score inputs: fee={fee}, txs={unconfirmed_tx}, spread={spread_pct:.2f}, z={z_score} => score={score:.4f}")
 
-    print(f"[DEBUG] Score inputs: fee={median_fee}, txs={mem_tx_count}, spread={spread_val}, z={z_score_usdt} => score={score}")
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-    if score is None:
-        print("[SKIP] Score is None, skipping logging.")
-        log_to_file("score_logger", "Score is None, skipped.")
-        sys.exit()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS signals (
+                timestamp TEXT,
+                btc_price REAL,
+                spread_pct REAL,
+                median_fee REAL,
+                unconfirmed_tx INTEGER,
+                z_score REAL,
+                score REAL
+            )
+        """)
 
-    timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        cursor.execute("""
+            INSERT INTO signals (
+                timestamp, btc_price, spread_pct, median_fee, unconfirmed_tx, z_score, score
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (now, btc_price, spread_pct, fee, unconfirmed_tx, z_score, score))
 
-    # Log to SQLite
-    log_signal(
-        timestamp=timestamp,
-        btc_price=btc_price,
-        spread_pct=spread_val,
-        median_fee=median_fee,
-        unconfirmed_tx=mem_tx_count,
-        score=score
-    )
+        conn.commit()
+        conn.close()
+        print(f"[{now}] Score: {score:.4f}")
 
-    print(f"[{timestamp}] Score: {score}")
-    log_to_file("score_logger", f"Score: {score}")
+    except Exception as e:
+        log_to_file("score_logger", str(e))
+        print(f"[ERROR][score_logger] {e}")
 
-except Exception as e:
-    print(f"[ERROR] {e}")
-    log_to_file("score_logger", f"Exception: {e}")
+if __name__ == "__main__":
+    main()

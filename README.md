@@ -1,6 +1,3 @@
-# Re-run after code execution state reset: regenerate README.md
-
-readme_content = """
 # DeepSpread
 
 DeepSpread is an exploratory Bitcoin swing trading research tool. It analyzes network congestion and underground market spreads to identify rare stress signals in the Bitcoin ecosystem.
@@ -11,22 +8,20 @@ This project is not a bot. It does not auto-trade. It’s a research and signal 
 
 ## Project Structure
 
-```
 DeepSpread/
 ├── modules/
-│   ├── config.py              # DB paths, constants
-│   ├── error_logger.py        # Logs to error file
-│   ├── fetch_*.py             # Individual data fetchers (Kraken, TradeOgre)
-│   ├── sqlite_logger.py       # Writes final score record
+│ ├── config.py # DB paths, constants
+│ ├── error_logger.py # Logs to error file
+│ ├── fetch_*.py # Individual data fetchers (Kraken, TradeOgre)
+│ ├── sqlite_logger.py # Writes final score record
 ├── src/
-│   ├── merged_logger.py       # Merges all inputs into a single score
-│   ├── view_debug_signals.py  # Shows last logged scores
-│   └── view_all_latest.py     # Shows latest from all raw tables
-├── logs/                      # Optional error/debug logs
-├── data/                      # Database lives here
-├── tests/                     # Unit tests (TBD)
+│ ├── merged_logger.py # Merges all inputs into a single score
+│ ├── view_debug_signals.py # Shows last logged scores
+│ └── view_all_latest.py # Shows latest from all raw tables
+├── logs/ # Optional error/debug logs
+├── data/ # Database lives here
+├── tests/ # Unit tests (TBD)
 └── README.md
-```
 
 
 ## How It Works
@@ -95,11 +90,3 @@ All data is stored in `data/deepspread.db`.
 ## Author
 
 This is a solo project, designed for high-signal, censorship-resistant market research. If you use this repo, fork it, or build on it, drop a star.
-"""
-
-# Save the README.md
-readme_path = "/mnt/data/README.md"
-with open(readme_path, "w") as f:
-    f.write(readme_content)
-
-readme_path

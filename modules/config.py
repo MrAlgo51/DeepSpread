@@ -22,7 +22,9 @@ FEE_SPIKE_THRESHOLD = 1.25
 SPREAD_DELTA_THRESHOLD = 1.15
 
 # Database path
-DB_PATH = r"C:\Users\cweat\OneDrive\Desktop\DeepSpread_CLEANED\DeepSpread\data\deepspread.db"
+# Database path (relative to project root)
+DB_PATH = os.path.join(BASE_DIR, "data", "deepspread.db")
+
 
 # Database table names
 USDT_PREMIUM_TABLE = "usdt_premium"

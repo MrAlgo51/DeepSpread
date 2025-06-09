@@ -6,25 +6,17 @@ from modules import config
 
 def get_closest_mempool_row(target_ts_str, window_seconds=60):
     """
-    Find the closest mempool row to the given timestamp (±window_seconds).
+    Find the closest mempool row from mempool_logs to the given timestamp (±window_seconds).
     """
     conn = sqlite3.connect(config.DB_PATH)
     cursor = conn.cursor()
-
-    # Convert string timestamp to datetime object
-    target_ts = datetime.strptime(target_ts_str, "%Y-%m-%d %H:%M:%S UTC")
-    lower_bound = (target_ts - timedelta(seconds=window_seconds)).strftime("%Y-%m-%d %H:%M:%S UTC")
-    upper_bound = (target_ts + timedelta(seconds=window_seconds)).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-    query = """
-        SELECT *, ABS(strftime('%s', timestamp) - strftime('%s', ?)) AS time_diff
-        FROM mempool
-        WHERE timestamp BETWEEN ? AND ?
-        ORDER BY time_diff ASC
+    cursor.execute("""
+        SELECT *
+        FROM mempool_logs
+        WHERE ABS(strftime('%s', timestamp) - strftime('%s', ?)) <= ?
+        ORDER BY ABS(strftime('%s', timestamp) - strftime('%s', ?))
         LIMIT 1
-    """
-    cursor.execute(query, (target_ts_str, lower_bound, upper_bound))
+    """, (target_ts_str, window_seconds, target_ts_str))
     row = cursor.fetchone()
     conn.close()
-
-    return row  # None if no match
+    return row

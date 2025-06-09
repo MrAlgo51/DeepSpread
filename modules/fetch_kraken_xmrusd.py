@@ -1,7 +1,8 @@
 # modules/fetch_kraken_xmrusd.py
 
 import requests
-from modules import config
+import config
+
 
 def get_kraken_xmrusd():
     try:

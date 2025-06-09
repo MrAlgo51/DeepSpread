@@ -1,91 +1,77 @@
 import os
 import sys
-import requests
 import sqlite3
+import requests
 from datetime import datetime, timezone
 
-# Setup path to include /modules
+# Setup module path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, ".."))
 modules_path = os.path.join(project_root, "modules")
 if modules_path not in sys.path:
     sys.path.insert(0, modules_path)
 
-import config
+from config import DB_PATH
 from error_logger import log_to_file
-from sqlite_logger import log_signal
 
-def fetch_spread():
-    try:
-        kraken_url = "https://api.kraken.com/0/public/Ticker?pair=XXMRZUSD"
-        ogre_url = "https://tradeogre.com/api/v1/ticker/xmr-usdt"
+MEMPOOL_API = "https://mempool.space/api/mempool"
 
-        kraken_resp = requests.get(kraken_url)
-        ogre_resp = requests.get(ogre_url)
+def fetch_mempool_data():
+    response = requests.get(MEMPOOL_API)
+    response.raise_for_status()
+    data = response.json()
+    return {
+        "unconfirmed_tx": data["count"],
+        "mempool_size": data["vsize"],
+        "median_fee": data["feeMedian"],
+        "low_fee_bucket": data.get("vsize10", 0),
+        "med_fee_bucket": data.get("vsize50", 0),
+        "high_fee_bucket": data.get("vsize90", 0),
+    }
 
-        kraken_resp.raise_for_status()
-        ogre_resp.raise_for_status()
-
-        kraken_price = float(kraken_resp.json()["result"]["XXMRZUSD"]["c"][0])
-        ogre_price = float(ogre_resp.json()["price"])
-
-        spread_pct = round(((ogre_price - kraken_price) / kraken_price) * 100, 3)
-        return spread_pct
-    except Exception as e:
-        log_to_file("merged_logger", f"ERROR fetching spread: {str(e)}")
-        return None
-
-def fetch_mempool():
-    try:
-        response = requests.get(config.MEMPOOL_API)
-        response.raise_for_status()
-        data = response.json()
-
-        median_fee = 0
-        histogram = data.get("fee_histogram", [])
-        total_txs = sum(bucket[1] for bucket in histogram)
-        cumulative = 0
-        for fee_rate, tx_count in histogram:
-            cumulative += tx_count
-            if cumulative >= total_txs / 2:
-                median_fee = round(fee_rate, 2)
-                break
-
-        return median_fee, data.get("count", 0)
-    except Exception as e:
-        log_to_file("merged_logger", f"ERROR fetching mempool: {str(e)}")
-        return None, None
-
-def fetch_btc_price():
-    try:
-        url = "https://api.kraken.com/0/public/Ticker?pair=XXBTZUSD"
-        response = requests.get(url)
-        response.raise_for_status()
-        btc_price = float(response.json()["result"]["XXBTZUSD"]["c"][0])
-        return btc_price
-    except Exception as e:
-        log_to_file("merged_logger", f"ERROR fetching BTC price: {str(e)}")
-        return None
+def ensure_table_exists(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mempool (
+            timestamp TEXT,
+            median_fee REAL,
+            unconfirmed_tx INTEGER,
+            mempool_size INTEGER,
+            low_fee_bucket INTEGER,
+            med_fee_bucket INTEGER,
+            high_fee_bucket INTEGER
+        )
+    """)
 
 def main():
     try:
-        spread_pct = fetch_spread()
-        median_fee, unconfirmed_tx = fetch_mempool()
-        btc_price = fetch_btc_price()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        data = fetch_mempool_data()
 
-        if None in (spread_pct, median_fee, unconfirmed_tx, btc_price):
-            log_to_file("merged_logger", "ERROR: Missing data, skipping log.")
-            return
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        ensure_table_exists(cursor)
 
-        # Simple scoring logic
-        score = round((abs(spread_pct) + median_fee / 10 + unconfirmed_tx / 5000), 3)
+        cursor.execute("""
+            INSERT INTO mempool (timestamp, median_fee, unconfirmed_tx, mempool_size,
+                                 low_fee_bucket, med_fee_bucket, high_fee_bucket)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            now,
+            data["median_fee"],
+            data["unconfirmed_tx"],
+            data["mempool_size"],
+            data["low_fee_bucket"],
+            data["med_fee_bucket"],
+            data["high_fee_bucket"]
+        ))
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        log_signal(timestamp, btc_price, spread_pct, median_fee, unconfirmed_tx, score)
+        conn.commit()
+        conn.close()
+        print(f"[MEMPOOL] → {now}, {data}")
 
-        print(f"[{timestamp}] BTC: {btc_price}, Spread: {spread_pct}%, Fee: {median_fee}, TXs: {unconfirmed_tx}, Score: {score}")
     except Exception as e:
-        log_to_file("merged_logger", f"ERROR: {str(e)}")
+        log_to_file("mempool_logger", str(e))
+        print(f"[ERROR][MEMPOOL] {e}")
 
 if __name__ == "__main__":
     main()
