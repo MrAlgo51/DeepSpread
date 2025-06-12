@@ -5,7 +5,7 @@ DeepSpread is an exploratory Bitcoin swing trading research tool. It analyzes ne
 This project is not a bot. It does not auto-trade. It’s a research and signal generation system built in Python using SQLite for storage and matplotlib/pandas for analysis.
 
 ---
-'''
+```
 DeepSpread/
 ├── data/
 │   └── deepspread.db               # SQLite database storing all logged data
@@ -35,7 +35,7 @@ DeepSpread/
 │
 ├── README.md                      # Project overview, install, and workflow
 ├── requirements.txt               # Python dependencies (optional)
-└── .gitignore                     # Ignores `__pycache__`, `.db`, `.log`, etc.'''
+└── .gitignore                     # Ignores `__pycache__`, `.db`, `.log`, etc.```
 
 
 
