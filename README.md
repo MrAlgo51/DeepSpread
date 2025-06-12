@@ -5,23 +5,38 @@ DeepSpread is an exploratory Bitcoin swing trading research tool. It analyzes ne
 This project is not a bot. It does not auto-trade. It’s a research and signal generation system built in Python using SQLite for storage and matplotlib/pandas for analysis.
 
 ---
-
-## Project Structure
-
+'''
 DeepSpread/
+├── data/
+│   └── deepspread.db               # SQLite database storing all logged data
+│
 ├── modules/
-│ ├── config.py # DB paths, constants
-│ ├── error_logger.py # Logs to error file
-│ ├── fetch_*.py # Individual data fetchers (Kraken, TradeOgre)
-│ ├── sqlite_logger.py # Writes final score record
+│   ├── config.py                   # Central config (DB path, thresholds, etc.)
+│   ├── data_utils.py              # Utility functions (e.g., timestamp alignment)
+│   ├── error_logger.py            # Logs errors to file for debugging
+│   ├── fetch_kraken_spread.py     # Fetch BTC/XMR spread (Kraken)
+│   ├── fetch_tradeogre_xmrbtc.py  # Fetch XMR/BTC price from TradeOgre (optional)
+│   ├── fetch_kraken_btcusd.py     # Kraken BTC/USD price
+│   ├── fetch_coingecko_btcusd.py  # Coingecko USDT price (Binance proxy)
+│   ├── scoring.py                 # Combines signals into a composite score
+│   ├── path_setup.py              # Ensures Python paths are correctly set
+│
 ├── src/
-│ ├── merged_logger.py # Merges all inputs into a single score
-│ ├── view_debug_signals.py # Shows last logged scores
-│ └── view_all_latest.py # Shows latest from all raw tables
-├── logs/ # Optional error/debug logs
-├── data/ # Database lives here
-├── tests/ # Unit tests (TBD)
-└── README.md
+│   ├── analyzer.py                # Generates forward returns + performance analysis
+│   ├── visualizer.py              # Score-return charts, histograms, signal overlays
+│   ├── score_logger.py            # Logs the final DeepSpread score
+│   ├── mempool_logger.py          # Logs mempool stats (median fee, size, etc.)
+│   ├── spread_logger.py           # Logs BTC/XMR spread and z-score
+│   ├── usdt_premium_logger.py     # Logs BTC/USD vs USDT price premium and z-score
+│   ├── run_all.py (optional)      # Executes all loggers sequentially
+│
+├── logs/
+│   └── *.log                      # Error logs from each module (optional)
+│
+├── README.md                      # Project overview, install, and workflow
+├── requirements.txt               # Python dependencies (optional)
+└── .gitignore                     # Ignores `__pycache__`, `.db`, `.log`, etc.'''
+
 
 
 ## How It Works
