@@ -11,23 +11,25 @@ DB_PATH = "data/deepspread.db"
 def generate_forward_return_table():
     conn = sqlite3.connect(DB_PATH)
 
-    # Load BTC price + timestamp from signals table
     df = pd.read_sql_query("SELECT timestamp, btc_price FROM signals", conn)
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    print(f"[DEBUG] Loaded {len(df)} rows from signals")
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    # Compute forward returns (1h, 2h, 4h)
     for h in [1, 2, 4]:
         df[f"fwd_return_{h}h"] = (df["btc_price"].shift(-h) - df["btc_price"]) / df["btc_price"] * 100
 
+    print(f"[DEBUG] Rows before dropna: {len(df)}")
     df.dropna(inplace=True)
+    print(f"[DEBUG] Rows after dropna: {len(df)}")
 
-    # Store to returns table
     df_out = df[["timestamp", "fwd_return_1h", "fwd_return_2h", "fwd_return_4h"]]
     df_out.to_sql("returns", conn, if_exists="replace", index=False)
 
     conn.close()
     print("[analyzer] Forward returns table created.")
+
 
 def analyze_score_buckets(bucket_width=0.1):
     conn = sqlite3.connect(DB_PATH)
@@ -71,3 +73,6 @@ def analyze_score_buckets(bucket_width=0.1):
 
 def analyze_implied_xmr_btc_spread():
     print("[analyzer] (stub) analyze_implied_xmr_btc_spread() not implemented yet.")
+
+if __name__ == "__main__":
+    generate_forward_return_table()

@@ -2,7 +2,8 @@ import os
 import sys
 import sqlite3
 import pandas as pd
-from datetime import datetime, timezone
+from modules.utils import get_current_utc_timestamp  # ✅ Centralized timestamp
+
 
 # Setup module path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -64,7 +65,8 @@ def main():
         recent_series = get_recent_premiums(conn)
         z_score = compute_z_score_from_series(recent_series, premium_pct)
 
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        now = get_current_utc_timestamp()
+
 
         cursor.execute("""
             INSERT INTO usdt_premium (timestamp, kraken_usd, binance_usdt, premium_pct, z_score)

@@ -16,6 +16,9 @@ from fetch_tradeogre_xmrbtc import get_tradeogre_xmrbtc
 from scoring import compute_z_score_from_series
 from config import DB_PATH
 from error_logger import log_to_file
+from modules.utils import get_current_utc_timestamp
+from modules.fetchers import get_kraken_btcusd
+
 
 def ensure_table_exists(cursor):
     cursor.execute("""
@@ -24,9 +27,11 @@ def ensure_table_exists(cursor):
             kraken_spread REAL,
             tradeogre_spread REAL,
             spread_pct REAL,
-            z_score REAL
+            z_score REAL,
+            kraken_btcusd REAL
         )
     """)
+
 
 def get_recent_spreads(conn, limit=20):
     try:
@@ -34,24 +39,31 @@ def get_recent_spreads(conn, limit=20):
             "SELECT spread_pct FROM spread ORDER BY timestamp DESC LIMIT ?",
             conn, params=(limit,)
         )
-        return df["spread_pct"][::-1]  # return Series in chronological order
+        return df["spread_pct"][::-1]  # chronological order
     except Exception as e:
         log_to_file("spread_logger", f"Failed to read spread history: {e}")
         return pd.Series(dtype="float64")
 
+
 def main():
     try:
+        now = get_current_utc_timestamp()  # ✅ Moved to top
         print("🔥 spread_logger.py is running")
 
-        kraken = get_kraken_spread_pct()  # ✅ FIXED
-        tradeogre = get_tradeogre_xmrbtc()
+        kraken = get_kraken_spread_pct()
+        kraken_btcusd = get_kraken_btcusd()
+        print(f"[DEBUG] kraken_btcusd: {kraken_btcusd}")
 
+        if kraken_btcusd is None:
+            print("[SKIP] Missing BTC/USD price.")
+            return
+
+        tradeogre = get_tradeogre_xmrbtc()
         if kraken is None or tradeogre is None:
             print("[SKIP] Missing spread data, cannot compute.")
             return
 
         spread_pct = (kraken - tradeogre) / tradeogre * 100
-
         if abs(spread_pct) > 100:
             log_to_file("spread_logger", f"Unrealistic spread: {spread_pct:.2f}%")
             print(f"[ERROR][SPREAD] Unrealistic spread: {spread_pct:.2f}%")
@@ -66,14 +78,10 @@ def main():
         recent_list.append(spread_pct)
         z_score = compute_z_score_from_series(pd.Series(recent_list), recent_list[-1], window=20)
 
-
-
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
         cursor.execute("""
-            INSERT INTO spread (timestamp, kraken_spread, tradeogre_spread, spread_pct, z_score)
-            VALUES (?, ?, ?, ?, ?)
-        """, (now, kraken, tradeogre, spread_pct, z_score))
+            INSERT INTO spread (timestamp, kraken_spread, tradeogre_spread, spread_pct, z_score, kraken_btcusd)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (now, kraken, tradeogre, spread_pct, z_score, kraken_btcusd))
 
         conn.commit()
         conn.close()
@@ -83,6 +91,7 @@ def main():
     except Exception as e:
         log_to_file("spread_logger", f"Runtime error: {e}")
         print(f"[ERROR][SPREAD_LOGGER] {e}")
+
 
 if __name__ == "__main__":
     main()

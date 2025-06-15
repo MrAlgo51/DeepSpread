@@ -20,3 +20,9 @@ def get_closest_mempool_row(target_ts_str, window_seconds=60):
     row = cursor.fetchone()
     conn.close()
     return row
+
+
+def get_current_utc_timestamp():
+    """Returns current UTC time in standardized string format."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
