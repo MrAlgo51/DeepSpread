@@ -11,10 +11,10 @@ SCRIPTS_DIR = os.path.join(BASE_DIR, "src")
 scripts = [
     "spread_logger.py",
     "usdt_premium_logger.py",
+    "xmr_usd_premium_logger.py",
     "mempool_logger.py",
     "score_logger.py"
 ]
-
 # Run logger scripts
 for script in scripts:
     script_path = os.path.join(SCRIPTS_DIR, script)

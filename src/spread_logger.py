@@ -16,8 +16,8 @@ from fetch_tradeogre_xmrbtc import get_tradeogre_xmrbtc
 from scoring import compute_z_score_from_series
 from config import DB_PATH
 from error_logger import log_to_file
-from modules.utils import get_current_utc_timestamp
-from modules.fetchers import get_kraken_btcusd
+from utils import get_current_utc_timestamp
+from fetchers import get_kraken_btcusd
 
 
 def ensure_table_exists(cursor):
@@ -47,12 +47,11 @@ def get_recent_spreads(conn, limit=20):
 
 def main():
     try:
-        now = get_current_utc_timestamp()  # ✅ Moved to top
+        now = get_current_utc_timestamp()
         print("🔥 spread_logger.py is running")
 
         kraken = get_kraken_spread_pct()
         kraken_btcusd = get_kraken_btcusd()
-        print(f"[DEBUG] kraken_btcusd: {kraken_btcusd}")
 
         if kraken_btcusd is None:
             print("[SKIP] Missing BTC/USD price.")

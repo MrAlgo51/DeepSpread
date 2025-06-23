@@ -2,6 +2,7 @@ import os, sys
 import requests
 import sqlite3
 
+# Setup module path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, ".."))
 modules_path = os.path.join(project_root, "modules")
@@ -18,27 +19,9 @@ def ensure_table_exists(cursor):
             timestamp TEXT,
             median_fee REAL,
             mempool_size REAL,
-            low_fee_blocks REAL,
             unconfirmed_tx INTEGER
         )
     """)
-
-def estimate_low_fee_blocks(threshold=1.0):
-    try:
-        response = requests.get("https://mempool.space/api/v1/fees/mempool-blocks", timeout=10)
-        response.raise_for_status()
-        blocks = response.json()
-
-        low_fee_bytes = 0
-        for block in blocks:
-            min_fee = min(block.get("feeRange", []), default=9999)
-            if min_fee < threshold:
-                low_fee_bytes += block.get("blockVSize", 1_000_000)
-
-        return round(low_fee_bytes / 1_000_000, 2)
-    except Exception as e:
-        log_to_file("mempool_logger", f"Low fee block estimate error: {e}")
-        return None
 
 def fetch_mempool_data():
     try:
@@ -53,9 +36,8 @@ def fetch_mempool_data():
         median_fee = fees["halfHourFee"]
         unconfirmed_tx = mempool["count"]
         mempool_size = mempool["vsize"]
-        low_fee_blocks = estimate_low_fee_blocks()
 
-        return median_fee, mempool_size, low_fee_blocks, unconfirmed_tx
+        return median_fee, mempool_size, unconfirmed_tx
 
     except Exception as e:
         log_to_file("mempool_logger", f"Fetch error: {e}")
@@ -70,7 +52,7 @@ def main():
             print("[SKIP] No mempool data fetched.")
             return
 
-        median_fee, mempool_size, low_fee_blocks, unconfirmed_tx = data
+        median_fee, mempool_size, unconfirmed_tx = data
         now = get_current_utc_timestamp()
 
         conn = sqlite3.connect(DB_PATH)
@@ -79,14 +61,14 @@ def main():
 
         cursor.execute("""
             INSERT INTO mempool_logs (
-                timestamp, median_fee, mempool_size, low_fee_blocks, unconfirmed_tx
-            ) VALUES (?, ?, ?, ?, ?)
-        """, (now, median_fee, mempool_size, low_fee_blocks, unconfirmed_tx))
+                timestamp, median_fee, mempool_size, unconfirmed_tx
+            ) VALUES (?, ?, ?, ?)
+        """, (now, median_fee, mempool_size, unconfirmed_tx))
 
         conn.commit()
         conn.close()
 
-        print(f"[MEMPOOL] → {now}, fee: {median_fee}, txs: {unconfirmed_tx}, low-fee blocks: {low_fee_blocks}")
+        print(f"[MEMPOOL] → {now}, fee: {median_fee}, txs: {unconfirmed_tx}")
 
     except Exception as e:
         log_to_file("mempool_logger", f"Runtime error: {e}")

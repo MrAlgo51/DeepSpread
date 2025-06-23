@@ -1,10 +1,10 @@
 import os
 import sys
-import sqlite3
-import requests
+import asyncio
+import aiosqlite
 from datetime import datetime, timezone
 
-# Setup module path
+# Set up module paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, ".."))
 modules_path = os.path.join(project_root, "modules")
@@ -12,66 +12,78 @@ if modules_path not in sys.path:
     sys.path.insert(0, modules_path)
 
 from config import DB_PATH
+from fetchers import get_kraken_btcusd
 from error_logger import log_to_file
+from scoring import score_signal
 
-MEMPOOL_API = "https://mempool.space/api/mempool"
+async def get_latest_funding_rate(conn):
+    async with conn.execute("""
+        SELECT funding_rate FROM binance_premium
+        WHERE funding_rate IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT 1
+    """) as cursor:
+        row = await cursor.fetchone()
+        return row[0] if row else None
 
-def fetch_mempool_data():
-    response = requests.get(MEMPOOL_API)
-    response.raise_for_status()
-    data = response.json()
-    return {
-        "unconfirmed_tx": data["count"],
-        "mempool_size": data["vsize"],
-        "median_fee": data["feeMedian"],
-        "low_fee_bucket": data.get("vsize10", 0),
-        "med_fee_bucket": data.get("vsize50", 0),
-        "high_fee_bucket": data.get("vsize90", 0),
-    }
+async def get_funding_rate_with_retry(conn, retries=6, delay=5):
+    for attempt in range(retries):
+        rate = await get_latest_funding_rate(conn)
+        if rate is not None:
+            return rate
+        print(f"[WAIT] No funding rate yet — retrying ({attempt + 1}/6) in {delay}s...")
+        await asyncio.sleep(delay)
+    return None
 
-def ensure_table_exists(cursor):
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS mempool (
-            timestamp TEXT,
-            median_fee REAL,
-            unconfirmed_tx INTEGER,
-            mempool_size INTEGER,
-            low_fee_bucket INTEGER,
-            med_fee_bucket INTEGER,
-            high_fee_bucket INTEGER
-        )
-    """)
-
-def main():
+async def log_signal():
     try:
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        data = fetch_mempool_data()
+        timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        btc_usd = get_kraken_btcusd()
+        print("[DEBUG] BTC price:", btc_usd)
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        ensure_table_exists(cursor)
+        async with aiosqlite.connect(DB_PATH) as conn:
+            funding_rate = await get_funding_rate_with_retry(conn)
 
-        cursor.execute("""
-            INSERT INTO mempool (timestamp, median_fee, unconfirmed_tx, mempool_size,
-                                 low_fee_bucket, med_fee_bucket, high_fee_bucket)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            now,
-            data["median_fee"],
-            data["unconfirmed_tx"],
-            data["mempool_size"],
-            data["low_fee_bucket"],
-            data["med_fee_bucket"],
-            data["high_fee_bucket"]
-        ))
+            if None in (btc_usd, funding_rate):
+                print("[MERGED LOGGER] Missing data — skipping.")
+                return
 
-        conn.commit()
-        conn.close()
-        print(f"[MEMPOOL] → {now}, {data}")
+            score = score_signal(
+                funding_rate=funding_rate,
+                median_fee=0,
+                unconfirmed_tx=0,
+                spread_pct=0,
+                spread_delta=0
+            )
+
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS signals (
+                    timestamp TEXT PRIMARY KEY,
+                    btc_price REAL,
+                    spread_pct REAL,
+                    spread_delta REAL,
+                    median_fee REAL,
+                    unconfirmed_tx INTEGER,
+                    score REAL,
+                    funding_rate REAL
+                )
+            """)
+
+            await conn.execute("""
+                INSERT OR REPLACE INTO signals (
+                    timestamp, btc_price, spread_pct, spread_delta,
+                    median_fee, unconfirmed_tx, score, funding_rate
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                timestamp, btc_usd, 0.0, 0.0, 0.0, 0, score, funding_rate
+            ))
+
+            await conn.commit()
+            print(f"[MERGED LOGGER] → {timestamp} | Score: {score:.4f} | Funding: {funding_rate:.6f}")
 
     except Exception as e:
-        log_to_file("mempool_logger", str(e))
-        print(f"[ERROR][MEMPOOL] {e}")
+        log_to_file("merged_logger", str(e))
+        print(f"[ERROR][MERGED LOGGER] {e}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(log_signal())
